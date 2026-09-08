@@ -1,0 +1,176 @@
+"""Selective download + epoch extraction for PhysioNet EEGMMIDB via MNE.
+
+Why not the 1.9 GB ZIP?
+  Each subject folder is ~30 MB. MNE's eegbci helper downloads only the
+  (subject, run) pairs you ask for into MNE's data path (or a path you set).
+  For 10 subjects × 3 imagined runs that is roughly 50–100 MB, not 1.9 GB.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Iterable, Literal, Sequence
+
+import mne
+import numpy as np
+from mne.datasets import eegbci
+from mne.io import BaseRaw, read_raw_edf
+
+Condition = Literal["imagined", "executed", "both"]
+
+# Run map from the PhysioNet / NT@B brief
+EXECUTED_LR = (3, 7, 11)
+IMAGINED_LR = (4, 8, 12)
+BASELINE = (1, 2)
+EXECUTED_BOTH = (5, 9, 13)
+IMAGINED_BOTH = (6, 10, 14)
+
+# For left/right fist runs: T1 = left, T2 = right
+EVENT_ID = {"left": 1, "right": 2}
+
+
+def runs_for_condition(condition: Condition) -> list[int]:
+    if condition == "imagined":
+        return list(IMAGINED_LR)
+    if condition == "executed":
+        return list(EXECUTED_LR)
+    if condition == "both":
+        return list(EXECUTED_LR) + list(IMAGINED_LR)
+    raise ValueError(f"Unknown condition: {condition}")
+
+
+def ensure_data_path(data_dir: str | Path) -> Path:
+    """Point MNE's EEGBCI download cache at our project data folder."""
+    path = Path(data_dir).expanduser().resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def download_subject_runs(
+    subject: int,
+    runs: Sequence[int],
+    data_dir: str | Path,
+) -> list[Path]:
+    """Download only the requested runs for one subject. Returns local EDF paths.
+
+    MNE stores files as S{subject:03d}/S{subject:03d}R{run:02d}.edf under data_dir.
+    Re-running is a no-op if files already exist (HTTP resume / cache).
+    """
+    path = ensure_data_path(data_dir)
+    files = eegbci.load_data(subject, runs, path=path, update_path=False)
+    return [Path(f) for f in files]
+
+
+def download_subjects(
+    subjects: Iterable[int],
+    runs: Sequence[int],
+    data_dir: str | Path,
+) -> dict[int, list[Path]]:
+    out: dict[int, list[Path]] = {}
+    for subj in subjects:
+        out[int(subj)] = download_subject_runs(int(subj), runs, data_dir)
+    return out
+
+
+def standardize_raw(raw: BaseRaw) -> BaseRaw:
+    """Apply EEGBCI channel naming + standard 10-10 montage."""
+    eegbci.standardize(raw)
+    montage = mne.channels.make_standard_montage("standard_1005")
+    raw.set_montage(montage, on_missing="ignore")
+    return raw
+
+
+def load_raw_edf(edf_path: str | Path, preload: bool = True) -> BaseRaw:
+    raw = read_raw_edf(str(edf_path), preload=preload, verbose="error")
+    return standardize_raw(raw)
+
+
+def preprocess_raw(
+    raw: BaseRaw,
+    l_freq: float = 8.0,
+    h_freq: float = 30.0,
+) -> BaseRaw:
+    """Band-pass + average reference. Keeps EEG channels only."""
+    raw = raw.copy()
+    raw.pick(picks="eeg")
+    # FIR band-pass for mu/beta sensorimotor rhythms
+    raw.filter(l_freq, h_freq, fir_design="firwin", verbose="error")
+    raw.set_eeg_reference("average", projection=False, verbose="error")
+    return raw
+
+
+def events_from_annotations(raw: BaseRaw) -> tuple[np.ndarray, dict[str, int]]:
+    """Map PhysioNet T1/T2 annotations to left/right for LR-fist runs."""
+    events, _ = mne.events_from_annotations(
+        raw,
+        event_id={"T1": EVENT_ID["left"], "T2": EVENT_ID["right"]},
+        verbose="error",
+    )
+    return events, EVENT_ID
+
+
+def epochs_from_raw(
+    raw: BaseRaw,
+    tmin: float = 0.5,
+    tmax: float = 3.5,
+    l_freq: float = 8.0,
+    h_freq: float = 30.0,
+) -> mne.Epochs:
+    raw = preprocess_raw(raw, l_freq=l_freq, h_freq=h_freq)
+    events, event_id = events_from_annotations(raw)
+    epochs = mne.Epochs(
+        raw,
+        events,
+        event_id=event_id,
+        tmin=tmin,
+        tmax=tmax,
+        baseline=None,
+        preload=True,
+        detrend=1,
+        verbose="error",
+    )
+    return epochs
+
+
+def load_subject_epochs(
+    subject: int,
+    runs: Sequence[int],
+    data_dir: str | Path,
+    tmin: float = 0.5,
+    tmax: float = 3.5,
+    l_freq: float = 8.0,
+    h_freq: float = 30.0,
+) -> mne.Epochs:
+    paths = download_subject_runs(subject, runs, data_dir)
+    epoch_list = []
+    for p in paths:
+        raw = load_raw_edf(p)
+        epoch_list.append(
+            epochs_from_raw(raw, tmin=tmin, tmax=tmax, l_freq=l_freq, h_freq=h_freq)
+        )
+    return mne.concatenate_epochs(epoch_list, verbose="error")
+
+
+def load_dataset(
+    subjects: Sequence[int],
+    condition: Condition,
+    data_dir: str | Path,
+    tmin: float = 0.5,
+    tmax: float = 3.5,
+    l_freq: float = 8.0,
+    h_freq: float = 30.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return X (n_epochs, n_channels, n_times), y (0/1), subject_ids."""
+    runs = runs_for_condition(condition)
+    Xs, ys, sids = [], [], []
+    for subj in subjects:
+        epochs = load_subject_epochs(
+            subj, runs, data_dir, tmin=tmin, tmax=tmax, l_freq=l_freq, h_freq=h_freq
+        )
+        X = epochs.get_data(copy=True)  # (n_epochs, n_ch, n_times)
+        # MNE event_id: left=1, right=2 → map to 0/1
+        y = (epochs.events[:, 2] == EVENT_ID["right"]).astype(int)
+        Xs.append(X)
+        ys.append(y)
+        sids.append(np.full(len(y), subj, dtype=int))
+    return np.concatenate(Xs), np.concatenate(ys), np.concatenate(sids)
