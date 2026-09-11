@@ -1,31 +1,27 @@
-# NT@B FA26 — left vs right fist motor imagery / execution
-# Do NOT download the full PhysioNet ZIP. MNE pulls only the runs you request.
+# Left vs right fist classification
 
 data_dir: data/eegmmidb
 
-# Start small; expand after the pipeline works.
-subjects: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+# use first N subjects (1..N). override with: python scripts/train_compare.py --subjects 10
+n_subjects: 30
 
-# Left/right fist only (T1=left, T2=right). Skip baselines and both-fists/feet runs.
 runs:
   executed: [3, 7, 11]
   imagined: [4, 8, 12]
 
-# Primary task for the brief: imagery is the BCI-relevant condition.
 primary_condition: imagined  # imagined | executed | both
 
-# Epoching relative to cue onset (seconds)
+# epoch window (seconds after cue)
 tmin: 0.5
 tmax: 3.5
 
-# Band-pass for sensorimotor rhythms (mu / beta)
+# band-pass filter (mu/beta)
 l_freq: 8.0
 h_freq: 30.0
 
-# CSP + LDA
+# csp settings
 n_csp_components: 6
 csp_reg: 0.05
 
-# Evaluation
 random_seed: 42
 n_jobs: -1

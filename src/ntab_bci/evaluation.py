@@ -1,17 +1,9 @@
-"""Evaluation strategies that address the brief's skepticism.
+"""
+Evaluation functions for motor imagery classification.
 
-The brief explicitly asks:
-  - What your model can and cannot do
-  - That the result is not an artifact of measurement
-  - Appropriate baselines (not just chance)
-  - How much is about the person vs the task
-  - Whether the model learned or memorized
-
-We implement:
-  1. Within-subject (train/test split per subject, avg across subjects)
-  2. Cross-subject (leave-one-subject-out)
-  3. Subject-specific analysis to quantify inter-subject variability
-  4. Permutation tests to establish non-chance baselines
+Two main tests:
+  - within_subject: train/test split per person, pooled model
+  - cross_subject: leave-one-subject-out (LOSO)
 """
 
 from __future__ import annotations
@@ -21,7 +13,7 @@ from typing import Callable
 
 import numpy as np
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, confusion_matrix
-from sklearn.model_selection import StratifiedKFold, LeaveOneGroupOut
+from sklearn.model_selection import LeaveOneGroupOut
 from tqdm import tqdm
 
 from .model import MotorImageryClassifier
@@ -29,12 +21,11 @@ from .model import MotorImageryClassifier
 
 @dataclass
 class EvalResult:
-    """Container for evaluation metrics."""
     accuracy: float
     balanced_accuracy: float
     confusion: np.ndarray
     per_subject_acc: dict[int, float] | None = None
-    train_acc: float | None = None  # For overfitting analysis
+    train_acc: float | None = None
 
 
 def stratified_split_indices(
@@ -43,17 +34,7 @@ def stratified_split_indices(
     test_size: float = 0.2,
     random_state: int = 42,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Split maintaining class balance within each subject.
-    
-    Args:
-        y: labels
-        groups: subject IDs
-        test_size: fraction for test set
-        random_state: random seed
-    
-    Returns:
-        train_idx, test_idx
-    """
+    """80/20 split within each subject, keeps class balance."""
     rng = np.random.RandomState(random_state)
     train_idx_list, test_idx_list = [], []
     
@@ -62,9 +43,7 @@ def stratified_split_indices(
         subj_indices = np.where(subj_mask)[0]
         y_subj = y[subj_mask]
         
-        # Stratified split within this subject
-        unique_labels = np.unique(y_subj)
-        for label in unique_labels:
+        for label in np.unique(y_subj):
             label_indices = subj_indices[y_subj == label]
             n_test = max(1, int(len(label_indices) * test_size))
             rng.shuffle(label_indices)
@@ -82,9 +61,9 @@ def within_subject_evaluation(
     test_size: float = 0.2,
     random_state: int = 42,
 ) -> EvalResult:
-    """Train/test split within each subject, average results.
-    
-    This tests: does the model generalize to unseen trials from the same recording session?
+    """
+    Train on 80% of each person's trials, test on 20%.
+    Tests generalization to new trials from known people.
     """
     train_idx, test_idx = stratified_split_indices(
         y, subject_ids, test_size=test_size, random_state=random_state
@@ -120,10 +99,9 @@ def cross_subject_evaluation(
     subject_ids: np.ndarray,
     model_fn: Callable[[], MotorImageryClassifier],
 ) -> EvalResult:
-    """Leave-one-subject-out cross-validation.
-    
-    This tests: does the model generalize to a completely new person?
-    Much harder than within-subject; quantifies person-specific variance.
+    """
+    Leave-one-subject-out: train on N-1 people, test on held-out person.
+    Tests generalization to completely new people.
     """
     logo = LeaveOneGroupOut()
     y_true_all, y_pred_all = [], []
@@ -162,21 +140,15 @@ def permutation_test(
     n_permutations: int = 100,
     random_state: int = 42,
 ) -> tuple[float, np.ndarray]:
-    """Permutation test to establish significance vs. chance.
-    
-    Shuffles labels and retrains to build a null distribution.
-    
-    Returns:
-        p_value: fraction of permutations that matched or exceeded true accuracy
-        null_distribution: accuracies from permuted labels
     """
-    # True accuracy
+    Shuffle labels, retrain, see how often shuffled beats real.
+    Returns p-value and null distribution.
+    """
     true_result = within_subject_evaluation(
         X, y, subject_ids, model_fn, random_state=random_state
     )
     true_acc = true_result.accuracy
     
-    # Null distribution
     rng = np.random.RandomState(random_state)
     null_accs = []
     for _ in tqdm(range(n_permutations), desc="Permutation test"):
@@ -195,7 +167,7 @@ def permutation_test(
 def subject_variability_analysis(
     per_subject_acc: dict[int, float],
 ) -> dict[str, float]:
-    """Quantify how much performance varies across subjects."""
+    """Mean, std, min, max across subjects."""
     accs = np.array(list(per_subject_acc.values()))
     return {
         "mean_acc": float(np.mean(accs)),

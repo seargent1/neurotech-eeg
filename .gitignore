@@ -41,14 +41,14 @@ env/
 # Data (downloaded from PhysioNet)
 data/eegmmidb/
 
-# Models (trained locally)
+# Models (trained locally); ship default weights for predict.py
 models/*.pkl
 models/*.joblib
+!models/motor_imagery_classifier.pkl
 
 # Output
 *.log
 predictions.json
-results/
 
 # Mac
 .DS_Store

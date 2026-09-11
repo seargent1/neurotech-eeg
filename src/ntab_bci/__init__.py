@@ -1,3 +1,3 @@
-"""NT@B FA26: left vs right fist EEG classification on PhysioNet EEGMMIDB."""
+"""Left vs right fist motor imagery classification."""
 
 __version__ = "0.1.0"

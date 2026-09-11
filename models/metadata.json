@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-09-10T11:18:22.032739",
+  "config": {
+    "data_dir": "data/eegmmidb",
+    "subjects": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "runs": {
+      "executed": [
+        3,
+        7,
+        11
+      ],
+      "imagined": [
+        4,
+        8,
+        12
+      ]
+    },
+    "primary_condition": "imagined",
+    "tmin": 0.5,
+    "tmax": 3.5,
+    "l_freq": 8.0,
+    "h_freq": 30.0,
+    "n_csp_components": 6,
+    "csp_reg": 0.05,
+    "random_seed": 42,
+    "n_jobs": -1
+  },
+  "data_shape": {
+    "n_epochs": 450,
+    "n_channels": 64,
+    "n_times": 481
+  },
+  "within_subject": {
+    "accuracy": 0.6375,
+    "balanced_accuracy": 0.6375,
+    "train_accuracy": 0.6432432432432432,
+    "overfitting_gap": 0.005743243243243268
+  },
+  "cross_subject": {
+    "accuracy": 0.5533333333333333,
+    "balanced_accuracy": 0.5516798418972333,
+    "variability": {
+      "mean_acc": 0.5533333333333333,
+      "std_acc": 0.10770329614269007,
+      "min_acc": 0.37777777777777777,
+      "max_acc": 0.7777777777777778,
+      "range_acc": 0.4
+    }
+  }
+}

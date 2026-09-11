@@ -1,0 +1,132 @@
+{
+  "timestamp": "2026-09-10T15:35:09.801202",
+  "n_subjects": 10,
+  "n_imagined": 450,
+  "n_executed": 450,
+  "models": {
+    "csp_lda": {
+      "imag_on_imag": {
+        "accuracy": 0.6822222222222222,
+        "balanced_accuracy": 0.6809288537549407,
+        "confusion": [
+          [
+            170,
+            60
+          ],
+          [
+            83,
+            137
+          ]
+        ],
+        "n_samples": 450
+      },
+      "exec_on_exec": {
+        "accuracy": 0.7177777777777777,
+        "balanced_accuracy": 0.7172616107939394,
+        "confusion": [
+          [
+            176,
+            51
+          ],
+          [
+            76,
+            147
+          ]
+        ],
+        "n_samples": 450
+      },
+      "imag_on_exec": {
+        "accuracy": 0.5955555555555555,
+        "balanced_accuracy": 0.5941802809110843,
+        "confusion": [
+          [
+            170,
+            57
+          ],
+          [
+            125,
+            98
+          ]
+        ],
+        "n_samples": 450
+      },
+      "exec_on_imag": {
+        "accuracy": 0.6133333333333333,
+        "balanced_accuracy": 0.6134387351778656,
+        "confusion": [
+          [
+            140,
+            90
+          ],
+          [
+            84,
+            136
+          ]
+        ],
+        "n_samples": 450
+      }
+    },
+    "riemannian": {
+      "imag_on_imag": {
+        "accuracy": 1.0,
+        "balanced_accuracy": 1.0,
+        "confusion": [
+          [
+            230,
+            0
+          ],
+          [
+            0,
+            220
+          ]
+        ],
+        "n_samples": 450
+      },
+      "exec_on_exec": {
+        "accuracy": 1.0,
+        "balanced_accuracy": 1.0,
+        "confusion": [
+          [
+            227,
+            0
+          ],
+          [
+            0,
+            223
+          ]
+        ],
+        "n_samples": 450
+      },
+      "imag_on_exec": {
+        "accuracy": 0.6866666666666666,
+        "balanced_accuracy": 0.6861480413267221,
+        "confusion": [
+          [
+            169,
+            58
+          ],
+          [
+            83,
+            140
+          ]
+        ],
+        "n_samples": 450
+      },
+      "exec_on_imag": {
+        "accuracy": 0.6511111111111111,
+        "balanced_accuracy": 0.6507905138339921,
+        "confusion": [
+          [
+            153,
+            77
+          ],
+          [
+            80,
+            140
+          ]
+        ],
+        "n_samples": 450
+      }
+    }
+  }
+}

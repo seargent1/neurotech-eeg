@@ -1,9 +1,6 @@
-"""Selective download + epoch extraction for PhysioNet EEGMMIDB via MNE.
-
-Why not the 1.9 GB ZIP?
-  Each subject folder is ~30 MB. MNE's eegbci helper downloads only the
-  (subject, run) pairs you ask for into MNE's data path (or a path you set).
-  For 10 subjects × 3 imagined runs that is roughly 50–100 MB, not 1.9 GB.
+"""
+Download and preprocess PhysioNet EEGMMIDB data.
+Uses MNE to fetch only the runs we need (~50-100 MB) instead of the full 1.9 GB zip.
 """
 
 from __future__ import annotations
@@ -18,14 +15,14 @@ from mne.io import BaseRaw, read_raw_edf
 
 Condition = Literal["imagined", "executed", "both"]
 
-# Run map from the PhysioNet / NT@B brief
+# run numbers for left/right fist task
 EXECUTED_LR = (3, 7, 11)
 IMAGINED_LR = (4, 8, 12)
 BASELINE = (1, 2)
 EXECUTED_BOTH = (5, 9, 13)
 IMAGINED_BOTH = (6, 10, 14)
 
-# For left/right fist runs: T1 = left, T2 = right
+# T1 = left fist, T2 = right fist (for LR runs only)
 EVENT_ID = {"left": 1, "right": 2}
 
 
@@ -36,11 +33,10 @@ def runs_for_condition(condition: Condition) -> list[int]:
         return list(EXECUTED_LR)
     if condition == "both":
         return list(EXECUTED_LR) + list(IMAGINED_LR)
-    raise ValueError(f"Unknown condition: {condition}")
+    raise ValueError(f"unknown condition: {condition}")
 
 
 def ensure_data_path(data_dir: str | Path) -> Path:
-    """Point MNE's EEGBCI download cache at our project data folder."""
     path = Path(data_dir).expanduser().resolve()
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -51,11 +47,7 @@ def download_subject_runs(
     runs: Sequence[int],
     data_dir: str | Path,
 ) -> list[Path]:
-    """Download only the requested runs for one subject. Returns local EDF paths.
-
-    MNE stores files as S{subject:03d}/S{subject:03d}R{run:02d}.edf under data_dir.
-    Re-running is a no-op if files already exist (HTTP resume / cache).
-    """
+    """Fetch EDF files for one subject. Cached after first download."""
     path = ensure_data_path(data_dir)
     files = eegbci.load_data(subject, runs, path=path, update_path=False)
     return [Path(f) for f in files]
@@ -73,7 +65,7 @@ def download_subjects(
 
 
 def standardize_raw(raw: BaseRaw) -> BaseRaw:
-    """Apply EEGBCI channel naming + standard 10-10 montage."""
+    """Fix channel names and add 10-10 montage."""
     eegbci.standardize(raw)
     montage = mne.channels.make_standard_montage("standard_1005")
     raw.set_montage(montage, on_missing="ignore")
@@ -90,17 +82,16 @@ def preprocess_raw(
     l_freq: float = 8.0,
     h_freq: float = 30.0,
 ) -> BaseRaw:
-    """Band-pass + average reference. Keeps EEG channels only."""
+    """Band-pass filter and average reference."""
     raw = raw.copy()
     raw.pick(picks="eeg")
-    # FIR band-pass for mu/beta sensorimotor rhythms
     raw.filter(l_freq, h_freq, fir_design="firwin", verbose="error")
     raw.set_eeg_reference("average", projection=False, verbose="error")
     return raw
 
 
 def events_from_annotations(raw: BaseRaw) -> tuple[np.ndarray, dict[str, int]]:
-    """Map PhysioNet T1/T2 annotations to left/right for LR-fist runs."""
+    """Pull T1/T2 cues and map to left/right."""
     events, _ = mne.events_from_annotations(
         raw,
         event_id={"T1": EVENT_ID["left"], "T2": EVENT_ID["right"]},
@@ -160,15 +151,19 @@ def load_dataset(
     l_freq: float = 8.0,
     h_freq: float = 30.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Return X (n_epochs, n_channels, n_times), y (0/1), subject_ids."""
+    """
+    Returns:
+        X: (n_epochs, n_channels, n_times)
+        y: 0 = left, 1 = right
+        subject_ids: which person each epoch came from
+    """
     runs = runs_for_condition(condition)
     Xs, ys, sids = [], [], []
     for subj in subjects:
         epochs = load_subject_epochs(
             subj, runs, data_dir, tmin=tmin, tmax=tmax, l_freq=l_freq, h_freq=h_freq
         )
-        X = epochs.get_data(copy=True)  # (n_epochs, n_ch, n_times)
-        # MNE event_id: left=1, right=2 → map to 0/1
+        X = epochs.get_data(copy=True)
         y = (epochs.events[:, 2] == EVENT_ID["right"]).astype(int)
         Xs.append(X)
         ys.append(y)
